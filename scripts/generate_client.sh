@@ -20,4 +20,4 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
 
 #Using an array to store the arguments, to handle 'whitespaces' correctly
 args=("$@")
-poetry run $PROJECT_ROOT/scripts/datamodel_generate_client.py "${args[@]}"
+poetry run "$PROJECT_ROOT/scripts/datamodel_generate_client.py" "${args[@]}"
