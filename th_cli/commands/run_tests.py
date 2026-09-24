@@ -301,10 +301,8 @@ async def run_tests(
         test_collections = await test_collections_api.read_test_collections_api_v1_test_collections__get()
         selected_tests_dict, unmatched_test_ids = build_test_selection(test_collections, validated_test_ids)
         if unmatched_test_ids:
-            click.echo(
-                colorize_warning(
-                    f"No matching test case found for: {', '.join(unmatched_test_ids)} — these will be skipped"
-                )
+            raise CLIError(
+                f"No matching test case found for: {', '.join(unmatched_test_ids)} — aborting before starting the run"
             )
 
         click.echo(colorize_key_value("Selected tests", json.dumps(selected_tests_dict, indent=JSON_INDENT)))
