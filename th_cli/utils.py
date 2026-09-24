@@ -87,11 +87,14 @@ def build_test_selection(test_collections, tests_list) -> tuple[dict, list[str]]
     """
     selected_tests = {}
 
-    # Map normalized (case-insensitive) test IDs back to their original spelling,
-    # so unmatched entries can be reported to the caller as requested.
-    unmatched_ids = {
-        test_id.strip().replace("-", "_").replace(".", "_").upper(): test_id.strip() for test_id in tests_list
-    }
+    # Map normalized (case-insensitive) test IDs back to their original spelling(s),
+    # so unmatched entries can be reported to the caller as requested. Multiple
+    # original spellings can normalize to the same key (e.g. "TC-TYPO-9.9" and
+    # "TC_TYPO_9_9"), so track them all rather than overwriting.
+    unmatched_ids: dict[str, list[str]] = {}
+    for test_id in tests_list:
+        normalized_id = test_id.strip().replace("-", "_").replace(".", "_").upper()
+        unmatched_ids.setdefault(normalized_id, []).append(test_id.strip())
     tests_set = set(unmatched_ids)
 
     # Iterate through test collections
@@ -117,7 +120,9 @@ def build_test_selection(test_collections, tests_list) -> tuple[dict, list[str]]
         if any(suites.values())
     }
 
-    return selected_tests, list(unmatched_ids.values())
+    missing_ids = [original_id for ids in unmatched_ids.values() for original_id in ids]
+
+    return selected_tests, missing_ids
 
 
 def load_json_config(config_path: str) -> dict[str, Any]:

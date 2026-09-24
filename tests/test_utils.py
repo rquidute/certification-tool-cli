@@ -121,6 +121,20 @@ class TestBuildTestSelection:
         assert "TC-ACE-1.1" in result["SDK YAML Tests"]["FirstChipToolSuite"]
         assert missing_ids == ["TC-TYPO-9.9"]
 
+    def test_build_test_selection_duplicate_normalized_unmatched_ids_all_reported(
+        self, sample_test_collections: api_models.TestCollections
+    ) -> None:
+        """Distinct unmatched IDs that normalize to the same key are all reported, not just the last one."""
+        # Arrange
+        tests_list = ["TC-TYPO-9.9", "TC_TYPO_9_9", "tc.typo.9.9"]
+
+        # Act
+        result, missing_ids = build_test_selection(sample_test_collections, tests_list)
+
+        # Assert
+        assert result == {}
+        assert missing_ids == ["TC-TYPO-9.9", "TC_TYPO_9_9", "tc.typo.9.9"]
+
 
 @pytest.mark.unit
 class TestConvertNestedToDict:

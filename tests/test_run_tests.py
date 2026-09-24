@@ -572,7 +572,7 @@ class TestRunTestsCommand:
                         ):
                             mock_build_test_selection.return_value = (
                                 {"mock_collection": {"mock_suite": {"mock": 1}}},
-                                [],
+                                ["TC-TYPO-9.9"],
                             )
                             mock_socket = Mock()
                             mock_socket.connect_websocket = AsyncMock()
@@ -583,13 +583,16 @@ class TestRunTestsCommand:
                             mock_socket_class.return_value = mock_socket
 
                             # Act
-                            result = cli_runner.invoke(run_tests, ["--tests-list", "TC-ACE-1.1,TC-ACE-1.2"])
+                            result = cli_runner.invoke(run_tests, ["--tests-list", "TC-ACE-1.1,TC-ACE-1.2,TC-TYPO-9.9"])
 
         # Assert
         assert result.exit_code == 0
         mock_build_test_selection.assert_called_once()
         # Verify the test selection is displayed
         assert "Selected tests" in result.output
+        # Verify the unmatched ID is surfaced as a warning
+        assert "TC-TYPO-9.9" in result.output
+        assert "these will be skipped" in result.output
 
     def test_run_tests_logger_configuration(
         self,
