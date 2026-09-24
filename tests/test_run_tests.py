@@ -570,7 +570,10 @@ class TestRunTestsCommand:
                         with patch(
                             "th_cli.commands.run_tests.convert_nested_to_dict", return_value=sample_default_config_dict
                         ):
-                            mock_build_test_selection.return_value = {"mock_collection": {"mock_suite": {"mock": 1}}}
+                            mock_build_test_selection.return_value = (
+                                {"mock_collection": {"mock_suite": {"mock": 1}}},
+                                [],
+                            )
                             mock_socket = Mock()
                             mock_socket.connect_websocket = AsyncMock()
                             mock_socket.expected_test_case_count.return_value = 0
