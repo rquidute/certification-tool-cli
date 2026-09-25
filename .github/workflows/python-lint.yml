@@ -22,9 +22,6 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install Python dependencies
-        run: pip install black flake8 mypy pydantic types-requests
-
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
@@ -55,3 +52,6 @@ jobs:
           mypy: true
           mypy_args: "th_cli/main.py"
           mypy_command_prefix: "poetry run "
+
+      - name: Run isort
+        run: poetry run isort --check-only th_cli
