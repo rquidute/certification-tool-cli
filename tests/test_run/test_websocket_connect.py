@@ -33,7 +33,7 @@ from th_cli.api_lib_autogen.models import (
     TestSuiteExecution,
     TestSuiteMetadata,
 )
-from th_cli.test_run.websocket import IncompleteTestRunError, TestRunSocket
+from th_cli.test_run.websocket import WEBSOCKET_URL, IncompleteTestRunError, TestRunSocket
 
 _METADATA_DEFAULTS = dict(description="d", version="1.0", source_hash="x", mandatory=False, id=1)
 
@@ -166,3 +166,29 @@ class TestConnectWebsocketIncompleteClosure:
             await s.connect_websocket()  # must not raise
 
         fake_socket.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# connect_websocket — log record opt-out (--no-streaming)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestConnectWebsocketLogRecordsOptOut:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "receive_log_records, expected_url",
+        [(True, WEBSOCKET_URL), (False, f"{WEBSOCKET_URL}?log_records=false")],
+    )
+    async def test_url_reflects_receive_log_records(self, receive_log_records, expected_url):
+        s = TestRunSocket(run=_make_run(), receive_log_records=receive_log_records)
+        fake_socket = _FakeWSSocket(recv_side_effect=ws_exceptions.ConnectionClosedOK(None, None))
+
+        with _patch_connect(fake_socket) as connect:
+            with pytest.raises(IncompleteTestRunError):
+                await s.connect_websocket()
+
+        assert connect.call_args.args[0] == expected_url
+
+    def test_receives_log_records_by_default(self):
+        assert _make_socket().receive_log_records is True

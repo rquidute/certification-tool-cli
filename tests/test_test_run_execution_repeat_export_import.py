@@ -58,6 +58,40 @@ class TestRepeatCommand:
             mock_logging.get_log_stream_url.return_value = None
             yield mock_logging
 
+    def test_repeat_no_streaming_reads_log_back_from_backend(
+        self,
+        cli_runner: CliRunner,
+        mock_async_apis: Mock,
+        mock_api_client: Mock,
+        sample_test_run_execution: api_models.TestRunExecutionWithChildren,
+        mock_test_logging: Mock,
+    ) -> None:
+        """--no-streaming asks the backend not to send log records over the websocket,
+        and reads the run's log back from the backend once the run has finished."""
+        api = mock_async_apis.test_run_executions_api
+        api.repeat_test_run_execution_api_v1_test_run_executions__id__repeat_post.return_value = (
+            sample_test_run_execution
+        )
+        api.start_test_run_execution_api_v1_test_run_executions__id__start_post.return_value = (
+            sample_test_run_execution
+        )
+        mock_test_logging.append_backend_log_to_run_log = AsyncMock()
+
+        with (
+            patch("th_cli.commands.test_run_execution.get_client", return_value=mock_api_client),
+            patch("th_cli.commands.test_run_execution.AsyncApis", return_value=mock_async_apis),
+            patch("th_cli.commands.test_run_execution.TestRunSocket") as mock_socket_class,
+        ):
+            mock_socket = Mock()
+            mock_socket.connect_websocket = AsyncMock()
+            mock_socket_class.return_value = mock_socket
+
+            result = cli_runner.invoke(test_run_execution, ["repeat", "--id", "1", "--no-streaming"])
+
+        assert result.exit_code == 0
+        assert mock_socket_class.call_args.kwargs["receive_log_records"] is False
+        mock_test_logging.append_backend_log_to_run_log.assert_awaited_once_with(sample_test_run_execution.id)
+
     def test_repeat_success(
         self,
         cli_runner: CliRunner,
@@ -105,6 +139,7 @@ class TestRepeatCommand:
             sample_test_run_execution,
             project_config_dict=sample_test_run_execution.execution_config or {},
             two_way_talk_handler=None,
+            receive_log_records=True,
         )
         mock_socket.connect_websocket.assert_called_once()
         assert mock_socket.run == sample_test_run_execution
@@ -441,6 +476,7 @@ class TestRepeatCommand:
             two_way_talk_test_run_execution,
             project_config_dict=two_way_talk_test_run_execution.execution_config or {},
             two_way_talk_handler=mock_handler,
+            receive_log_records=True,
         )
         mock_handler.stop.assert_called_once()
 

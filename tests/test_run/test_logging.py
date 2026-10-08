@@ -15,7 +15,7 @@
 #
 """Unit tests for th_cli/test_run/logging.py."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -235,3 +235,49 @@ class TestGetLogStreamUrl:
 
         get_log_stream_url()
         mock_handler._get_log_viewer_url.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# append_backend_log_to_run_log
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAppendBackendLogToRunLog:
+    @staticmethod
+    def _patch_api(content):
+        client = MagicMock()
+        client.aclose = AsyncMock()
+        download = AsyncMock(return_value=content)
+        apis = MagicMock()
+        apis.test_run_executions_api.download_log_api_v1_test_run_executions__id__log_get = download
+        return (
+            patch("th_cli.client.get_client", return_value=client),
+            patch("th_cli.api_lib_autogen.api_client.AsyncApis", return_value=apis),
+            download,
+            client,
+        )
+
+    @pytest.mark.asyncio
+    async def test_writes_downloaded_log_raw_and_closes_client(self):
+        p_client, p_apis, download, client = self._patch_api("INFO | t | line {with braces}\n")
+
+        with p_client, p_apis, patch.object(logging_module, "logger") as mock_logger:
+            await logging_module.append_backend_log_to_run_log(42)
+
+        download.assert_awaited_once_with(id=42, json_entries=False, download=False)
+        client.aclose.assert_awaited_once()
+        mock_logger.opt.assert_called_once_with(raw=True)
+        written = mock_logger.opt.return_value.info.call_args.args[0]
+        assert "line {with braces}" in written
+        assert "42" in written
+
+    @pytest.mark.asyncio
+    async def test_empty_log_warns_and_writes_nothing(self):
+        p_client, p_apis, _, _ = self._patch_api("")
+
+        with p_client, p_apis, patch.object(logging_module, "logger") as mock_logger:
+            await logging_module.append_backend_log_to_run_log(7)
+
+        mock_logger.warning.assert_called_once()
+        mock_logger.opt.assert_not_called()

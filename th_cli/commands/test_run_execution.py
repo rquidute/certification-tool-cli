@@ -465,7 +465,11 @@ def __unarchive_test_run_execution(sync_apis: SyncApis, id: int) -> None:
 @click.option(
     "--no-streaming",
     is_flag=True,
-    help=colorize_help("Disable real-time log streaming via web browser (enabled by default)."),
+    help=colorize_help(
+        "Disable real-time log streaming via web browser (enabled by default). Also stops the backend from "
+        "sending log records over the websocket: the test log is read back from the backend once the run "
+        "finishes and appended to the CLI log file."
+    ),
 )
 @async_cmd
 async def repeat(id: int, title: str | None, no_color: bool, no_streaming: bool) -> None:
@@ -852,6 +856,7 @@ async def __start_and_stream_repeated_execution(
         new_execution,
         project_config_dict=new_execution.execution_config or {},
         two_way_talk_handler=two_way_talk_handler,
+        receive_log_records=enable_streaming,
     )
     socket_task = asyncio.create_task(socket.connect_websocket())
     try:
@@ -874,6 +879,11 @@ async def __start_and_stream_repeated_execution(
 
         socket.run = started_execution
         await socket_task
+        if not enable_streaming:
+            try:
+                await test_logging.append_backend_log_to_run_log(new_execution.id)
+            except Exception as e:
+                click.echo(colorize_error(f"Could not read the test run log back from the backend: {e}"), err=True)
         click.echo(colorize_key_value("Log output in", italic(log_path)))
     finally:
         test_logging.stop_log_streaming()

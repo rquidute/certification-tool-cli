@@ -136,3 +136,35 @@ def get_log_stream_handler() -> Optional["LogStreamHandler"]:
     if _log_stream_handler and _log_stream_handler.is_running:
         return _log_stream_handler
     return None
+
+
+async def append_backend_log_to_run_log(run_id: int) -> None:
+    """Append the run's log, read back from the backend DB, to the CLI log file.
+
+    Used when the CLI asked the backend not to send log records over the
+    websocket (--no-streaming): the test output then never passed through this
+    process's logger, so it is fetched once, after the run, instead.
+
+    Written through the logger's own sink (raw mode, no per-line formatting):
+    that sink owns the file's write position, so a second handle appending to
+    the same file would be overwritten by it on the next log call.
+    """
+    from httpx import Timeout
+
+    from th_cli.api_lib_autogen.api_client import AsyncApis
+    from th_cli.client import get_client
+
+    client = get_client(timeout=Timeout(120.0, connect=10.0))
+    try:
+        content = await AsyncApis(client).test_run_executions_api.download_log_api_v1_test_run_executions__id__log_get(
+            id=run_id, json_entries=False, download=False
+        )
+    finally:
+        await client.aclose()
+
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="replace")
+    if not content:
+        logger.warning(f"No log content returned by the backend for test run execution {run_id}")
+        return
+    logger.opt(raw=True).info(f"\n---- Test run log from backend (test run execution {run_id}) ----\n{content}\n")
