@@ -127,11 +127,7 @@ TWO_WAY_TALK_TEST_IDS: frozenset[str] = frozenset({"TC_WEBRTC_1_6"})
 @click.option(
     "--no-streaming",
     is_flag=True,
-    help=colorize_help(
-        "Disable real-time log streaming via web browser (enabled by default). Also stops the backend from "
-        "sending log records over the websocket: the test log is read back from the backend once the run "
-        "finishes and appended to the CLI log file."
-    ),
+    help=colorize_help("Disable real-time log streaming via web browser (enabled by default)."),
 )
 @click.option(
     "--prompt-timeout",
@@ -340,18 +336,11 @@ async def run_tests(
             await _print_webrtc_banner_and_wait(th_config.hostname, _webrtc_handler)
         else:
             _webrtc_handler = None
-        socket = TestRunSocket(
-            new_test_run,
-            test_run_config,
-            two_way_talk_handler=_webrtc_handler,
-            receive_log_records=enable_streaming,
-        )
+        socket = TestRunSocket(new_test_run, test_run_config, two_way_talk_handler=_webrtc_handler)
         socket_task = asyncio.create_task(socket.connect_websocket())
         new_test_run = await _start_test_run(async_apis, new_test_run)
         socket.run = new_test_run
         await socket_task
-        if not enable_streaming:
-            await _append_backend_log(new_test_run.id)
 
         # Defense in depth: connect_websocket() already raises IncompleteTestRunError
         # if the connection dropped before the run reached a terminal state. This
@@ -390,18 +379,6 @@ async def run_tests(
 
     if exit_code:
         ctx.exit(exit_code)
-
-
-async def _append_backend_log(run_id: int) -> None:
-    """Fill the CLI log file with the run's log read back from the backend.
-
-    Needed because with --no-streaming the backend does not send log records
-    over the websocket. Never fails the run: the results are already known.
-    """
-    try:
-        await test_logging.append_backend_log_to_run_log(run_id)
-    except Exception as e:
-        click.echo(colorize_error(f"Could not read the test run log back from the backend: {e}"), err=True)
 
 
 async def _get_cli_project(async_apis: AsyncApis, project_id: int | None = None) -> m.Project:

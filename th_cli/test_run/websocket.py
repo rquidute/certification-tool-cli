@@ -14,8 +14,6 @@
 # limitations under the License.
 #
 import asyncio
-import os
-import time
 from collections import Counter
 
 import click
@@ -59,11 +57,6 @@ from .socket_schemas import (
 )
 
 WEBSOCKET_URL = f"ws://{config.hostname}/api/v1/ws"
-
-# Opt-in timing of this process's share of the log path (message parsing and
-# logging each record), logged once at the end of the run. Totals overlap, so
-# read each line on its own.
-PERF_TIMING = os.environ.get("TH_CLI_PERF_TIMING", "").strip().lower() in ("1", "true", "yes", "on")
 
 WEBSOCKET_MAX_MESSAGE_SIZE = 32 * 1024 * 1024  # 32MB
 
@@ -132,14 +125,8 @@ class TestRunSocket:
         run: TestRunExecutionWithChildren,
         project_config_dict: dict | None = None,
         two_way_talk_handler=None,
-        receive_log_records: bool = True,
     ):
         self.run = run
-        # When False the backend is asked not to send TEST_LOG_RECORDS at all
-        # (see the log_records query parameter on /ws); the caller is then
-        # responsible for getting the log from the DB after the run.
-        self.receive_log_records = receive_log_records
-        self._perf: dict[str, list[float]] = {}
         self.project_config_dict = project_config_dict or {}
         self.two_way_talk_handler = two_way_talk_handler
         self._chip_server_info_displayed = False
@@ -185,7 +172,7 @@ class TestRunSocket:
         incomplete_closure = False
         try:
             async with websocket_connect(
-                WEBSOCKET_URL if self.receive_log_records else f"{WEBSOCKET_URL}?log_records=false",
+                WEBSOCKET_URL,
                 ping_timeout=None,
                 close_timeout=10,  # Allow 10 seconds for close handshake
                 max_size=WEBSOCKET_MAX_MESSAGE_SIZE,
@@ -222,10 +209,7 @@ class TestRunSocket:
                             )
                             continue
                         try:
-                            parse_start = time.perf_counter() if PERF_TIMING else 0.0
                             message_obj = SocketMessage.model_validate_json(message)
-                            if PERF_TIMING:
-                                self._perf_add("cli.parse_messages", time.perf_counter() - parse_start)
                             await self.__handle_incoming_socket_message(socket=socket, message=message_obj)
                         except ValidationError as e:
                             click.echo(colorize_error(f"Received invalid socket message: {message}"), err=True)
@@ -247,9 +231,6 @@ class TestRunSocket:
             # benign handshake quirk.
             if not self._run_finished:
                 incomplete_closure = True
-
-        if PERF_TIMING:
-            self.log_perf_summary()
 
         if incomplete_closure:
             raise IncompleteTestRunError(
@@ -472,22 +453,10 @@ class TestRunSocket:
         # one uninterrupted stretch, so the websocket read loop (and any
         # other pending work, e.g. prompt handling) doesn't stall for the
         # entire duration of processing one message.
-        start = time.perf_counter() if PERF_TIMING else 0.0
         for i, record in enumerate(records):
             logger.log(record.level, record.message)
             if (i + 1) % LOG_RECORD_YIELD_INTERVAL == 0:
                 await asyncio.sleep(0)
-        if PERF_TIMING:
-            self._perf_add("cli.log_records", time.perf_counter() - start, len(records))
-
-    def _perf_add(self, name: str, seconds: float, count: int = 1) -> None:
-        totals = self._perf.setdefault(name, [0.0, 0])
-        totals[0] += seconds
-        totals[1] += count
-
-    def log_perf_summary(self) -> None:
-        for name, (seconds, count) in sorted(self._perf.items()):
-            logger.info(f"PERF {name}: total={seconds:.2f}s count={count}")
 
     def __suite(self, index: int) -> TestSuiteExecution:
         return self.run.test_suite_executions[index]
